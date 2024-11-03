@@ -6,6 +6,8 @@ from psycopg2.extras import execute_values
 import numpy as np
 import logging
 import os
+from threading import Thread
+from datetime import datetime
 
 
 app = Flask(__name__)
@@ -148,23 +150,69 @@ def find_similar_embedding():
         logging.error(f"Error finding similar embedding: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+def update_embedding_async(embedding_id, text):
+    """Background task to get and update embedding"""
+    try:
+        # Get embedding from OpenAI
+        embedding = get_embedding(text)
+        
+        # Update database with the embedding
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute(
+            """
+            UPDATE embeddings 
+            SET embedding = %s, 
+                status = 'completed',
+                updated_at = CURRENT_TIMESTAMP 
+            WHERE id = %s
+            """,
+            (embedding, embedding_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        logging.info(f"Successfully updated embedding {embedding_id}")
+        
+    except Exception as e:
+        logging.error(f"Error updating embedding {embedding_id}: {str(e)}")
+        # Update status to failed
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE embeddings SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (embedding_id,)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as update_error:
+            logging.error(f"Error updating failed status: {str(update_error)}")
+
+
 @app.route('/api/embedding', methods=['POST'])
 def create_embedding():
-    """Create embedding from text and store in database"""
+    """Create pending embedding entry and process asynchronously"""
     if not request.json or 'text' not in request.json:
         return jsonify({'error': 'No text provided'}), 400
         
     try:
-        # Get embedding for text
-        embedding = get_embedding(request.json['text'])
+        text = request.json['text']
         
+        # Create pending embedding entry
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Insert embedding into database
         cur.execute(
-            "INSERT INTO embeddings (embedding) VALUES (%s) RETURNING id",
-            (embedding,)
+            """
+            INSERT INTO embeddings (status, created_at, updated_at) 
+            VALUES ('pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+            RETURNING id
+            """
         )
         new_id = cur.fetchone()[0]
         
@@ -172,13 +220,52 @@ def create_embedding():
         cur.close()
         conn.close()
         
+        # Start background thread to process embedding
+        Thread(
+            target=update_embedding_async,
+            args=(new_id, text)
+        ).start()
+        
         return jsonify({
             'id': new_id,
-            'message': 'Embedding created successfully'
-        }), 201
+            'status': 'pending',
+            'message': 'Embedding creation started'
+        }), 202
         
     except Exception as e:
-        logging.error(f"Error creating embedding: {str(e)}")
+        logging.error(f"Error creating embedding entry: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/embedding/<int:embedding_id>/status', methods=['GET'])
+def get_embedding_status(embedding_id):
+    """Get the status of an embedding"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT status, created_at, updated_at FROM embeddings WHERE id = %s",
+            (embedding_id,)
+        )
+        result = cur.fetchone()
+        
+        if result is None:
+            return jsonify({'error': 'Embedding not found'}), 404
+            
+        status, created_at, updated_at = result
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'id': embedding_id,
+            'status': status,
+            'created_at': created_at.isoformat(),
+            'updated_at': updated_at.isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting embedding status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
