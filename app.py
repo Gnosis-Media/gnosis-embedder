@@ -8,26 +8,30 @@ import logging
 import os
 from threading import Thread
 from datetime import datetime
-
+from secrets_manager import get_service_secrets
 
 app = Flask(__name__)
 CORS(app)
 
-C_PORT = 5008
+secrets = get_service_secrets('gnosis-embedder')
+
+C_PORT = int(secrets.get('PORT', 5000))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(levelname)s - %(message)s')
 
+OPENAI_API_KEY = secrets.get('OPENAI_API_KEY')
+
 # Initialize OpenAI client
-client = OpenAI()
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Database configuration
 DB_CONFIG = {
-    'dbname': 'postgres',
-    'user': 'postgres',
-    'password': 'DwJD8IiwV4qOe2MIStTB',
-    'host': 'database-embeddings.c1qcm4w2sbne.us-east-1.rds.amazonaws.com'
+    'dbname': secrets['POSTGRES_DB'],
+    'user': secrets['POSTGRES_USER'],
+    'password': secrets['POSTGRES_PASSWORD'],
+    'host': secrets['POSTGRES_HOST']
 }
 
 def get_db_connection():

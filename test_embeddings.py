@@ -8,7 +8,8 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Configuration
-BASE_URL = 'http://localhost:5008'  # Adjust if your service runs on a different port
+# IP 52.23.248.97
+BASE_URL = 'http://52.23.248.97:80'  # Adjust if your service runs on a different port
 TEST_TEXTS = [
     "The quick brown fox jumps over the lazy dog",
     "Python is a versatile programming language",
@@ -104,7 +105,7 @@ def run_tests():
             test_get_embedding(embedding_id)
         
         # Test similarity search
-        test_text = "This is a test query about artificial intelligence and machine learning"
+        test_text = "Give me embeddings about ludwig von mises and international trade and interventionism"
         test_find_similar_embeddings(test_text)
         
         # Test error cases
