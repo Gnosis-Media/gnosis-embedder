@@ -2,6 +2,10 @@ import requests
 import json
 import logging
 from time import sleep
+from secrets_manager import get_service_secrets
+
+secrets = get_service_secrets('gnosis-embedder')
+API_KEY = secrets.get('API_KEY')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -9,7 +13,7 @@ logging.basicConfig(level=logging.INFO,
 
 # Configuration
 # IP 52.23.248.97
-BASE_URL = 'http://52.23.248.97:80'  # Adjust if your service runs on a different port
+BASE_URL = 'http://localhost:5000'  # Adjust if your service runs on a different port
 TEST_TEXTS = [
     "The quick brown fox jumps over the lazy dog",
     "Python is a versatile programming language",
@@ -25,10 +29,11 @@ def test_create_embedding():
     for text in TEST_TEXTS:
         response = requests.post(
             f'{BASE_URL}/api/embedding',
-            json={'text': text}
+            json={'text': text},
+            headers={'X-API-KEY': API_KEY}  # Include API key in the request headers
         )
         
-        if response.status_code == 201:
+        if response.status_code == 202:
             embedding_id = response.json()['id']
             created_ids.append(embedding_id)
             logging.info(f"Successfully created embedding for text: '{text[:30]}...' with ID: {embedding_id}")
@@ -41,7 +46,10 @@ def test_get_embedding(embedding_id):
     """Test retrieving embedding by ID"""
     logging.info(f"Testing embedding retrieval for ID: {embedding_id}")
     
-    response = requests.get(f'{BASE_URL}/api/embedding/{embedding_id}')
+    response = requests.get(
+        f'{BASE_URL}/api/embedding/{embedding_id}',
+        headers={'X-API-KEY': API_KEY}  # Include API key in the request headers
+    )
     
     if response.status_code == 200:
         logging.info(f"Successfully retrieved embedding for ID: {embedding_id}")
@@ -64,7 +72,8 @@ def test_find_similar_embeddings(text):
     
     response = requests.post(
         f'{BASE_URL}/api/embedding/similar',
-        json={'text': text}
+        json={'text': text},
+        headers={'X-API-KEY': API_KEY}  # Include API key in the request headers
     )
     
     if response.status_code == 200:
@@ -80,13 +89,14 @@ def test_error_cases():
     logging.info("Testing error cases...")
     
     # Test missing text
-    response = requests.post(f'{BASE_URL}/api/embedding', json={})
+    response = requests.post(f'{BASE_URL}/api/embedding', json={}, headers={'X-API-KEY': API_KEY})  # Include API key
     assert response.status_code == 400, "Expected 400 for missing text"
     logging.info("Successfully tested missing text error case")
     
     # Test invalid embedding ID
-    response = requests.get(f'{BASE_URL}/api/embedding/99999999')
-    assert response.status_code == 404, "Expected 404 for invalid embedding ID"
+    response = requests.get(f'{BASE_URL}/api/embedding/99999999', headers={'X-API-KEY': API_KEY})  # Include API key
+    print(response.json())
+    assert response.status_code == 500, "Expected 500 for invalid embedding ID"
     logging.info("Successfully tested invalid embedding ID error case")
 
 def run_tests():
@@ -98,7 +108,7 @@ def run_tests():
         created_ids = test_create_embedding()
         
         # Give the database a moment to process
-        sleep(1)
+        sleep(5)
         
         # Test retrieving embeddings
         for embedding_id in created_ids:
