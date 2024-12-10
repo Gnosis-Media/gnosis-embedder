@@ -17,6 +17,7 @@ API_KEY = secrets.get('API_KEY')
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 # Configuration
 BASE_URL = 'http://localhost:5000'
 TEST_TEXTS = [
@@ -26,7 +27,7 @@ TEST_TEXTS = [
     "OpenAI's GPT models have revolutionized NLP"
 ]
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def created_embedding_ids():
     """Fixture to create embeddings and return their IDs"""
     created_ids = []
@@ -37,10 +38,10 @@ def created_embedding_ids():
             headers={'X-API-KEY': API_KEY}
         )
         
-        if response.status_code == 202:
-            embedding_id = response.json()['id']
-            created_ids.append(embedding_id)
-            logging.info(f"Created embedding for text: '{text[:30]}...' with ID: {embedding_id}")
+        assert response.status_code == 202
+        embedding_id = response.json()['id']
+        created_ids.append(embedding_id)
+        logging.info(f"Created embedding for text: '{text[:30]}...' with ID: {embedding_id}")
     
     # Wait for processing
     sleep(5)
@@ -61,34 +62,29 @@ def test_create_embedding():
         assert 'id' in response.json()
         logging.info(f"Successfully created embedding for text: '{text[:30]}...'")
 
-@pytest.mark.parametrize('embedding_id', [pytest.lazy_fixture('created_embedding_ids')])
-def test_get_embedding(embedding_id):
+def test_get_embedding(created_embedding_ids):
     """Test retrieving embedding by ID"""
-    if isinstance(embedding_id, list):
-        embedding_id = embedding_id[0]  # Take first ID if we got a list
+    for embedding_id in created_embedding_ids:
+        logging.info(f"Testing embedding retrieval for ID: {embedding_id}")
         
-    logging.info(f"Testing embedding retrieval for ID: {embedding_id}")
-    
-    response = requests.get(
-        f'{BASE_URL}/api/embedding/{embedding_id}',
-        headers={'X-API-KEY': API_KEY}
-    )
-    
-    assert response.status_code == 200
-    embedding = response.json()['embedding']
-    try:
-        embedding = json.loads(embedding)
-    except json.JSONDecodeError:
-        pytest.fail(f"Failed to decode embedding as JSON: {embedding}")
+        response = requests.get(
+            f'{BASE_URL}/api/embedding/{embedding_id}',
+            headers={'X-API-KEY': API_KEY}
+        )
+        
+        assert response.status_code == 200
+        embedding = response.json()['embedding']
+        try:
+            embedding = json.loads(embedding)
+        except json.JSONDecodeError:
+            pytest.fail(f"Failed to decode embedding as JSON: {embedding}")
 
-    assert len(embedding) == 1536, f"Expected embedding dimension 1536, got {len(embedding)}"
-    logging.info(f"Successfully retrieved embedding for ID: {embedding_id}")
+        assert len(embedding) == 1536, f"Expected embedding dimension 1536, got {len(embedding)}"
+        logging.info(f"Successfully retrieved embedding for ID: {embedding_id}")
 
-@pytest.mark.parametrize('test_text', [
-    "Give me embeddings about ludwig von mises and international trade and interventionism"
-])
-def test_find_similar_embeddings(test_text):
+def test_find_similar_embeddings():
     """Test finding similar embeddings"""
+    test_text = "Give me embeddings about ludwig von mises and international trade and interventionism"
     logging.info(f"Testing similarity search for text: '{test_text[:30]}...'")
     
     response = requests.post(
