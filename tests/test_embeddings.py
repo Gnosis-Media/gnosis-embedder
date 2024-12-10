@@ -2,6 +2,11 @@ import requests
 import json
 import logging
 from time import sleep
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from secrets_manager import get_service_secrets
 
 secrets = get_service_secrets('gnosis-embedder')
