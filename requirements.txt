@@ -7,3 +7,4 @@ pymysql
 psycopg2
 numpy
 boto3
+flask_restx
