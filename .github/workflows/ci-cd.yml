@@ -84,8 +84,9 @@ jobs:
     - name: Deploy to EC2
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        EC2_HOST: ${{ secrets.EC2_PUBLIC_IP }}
       run: |
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2.pem ${{ env.EC2_USER }}@${{ env.EC2_PUBLIC_IP }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2.pem ec2-user@${EC2_HOST} << 'ENDSSH'
           # Prune unused images
           docker system prune -a -f
           
@@ -110,4 +111,4 @@ jobs:
           
           # Verify deployment
           docker ps
-        EOF
+ENDSSH
