@@ -76,12 +76,18 @@ jobs:
     
     - name: Deploy to EC2
       run: |
+        # Get the current container ID if it exists
         aws ec2 send-command \
           --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --region ${{ env.AWS_REGION }} \
           --document-name "AWS-RunShellScript" \
-          --parameters commands=[
-            "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
-            "docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
-            "docker stop \$(docker ps -q --filter ancestor=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} || true)",
-            "docker run -d -p 80:5000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
-          ]
+          --parameters '{
+            "commands": [
+              "docker system prune -a -f",
+              "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
+              "docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
+              "CONTAINER_ID=$(docker ps -q --filter ancestor=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest || true)",
+              "if [ ! -z \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID && docker rm $CONTAINER_ID; fi",
+              "docker run -d --restart unless-stopped -p 80:5000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
+            ]
+          }'
