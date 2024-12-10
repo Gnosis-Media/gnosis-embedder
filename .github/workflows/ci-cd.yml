@@ -111,4 +111,4 @@ jobs:
           
           # Verify deployment
           docker ps
-ENDSSH
+        ENDSSH
