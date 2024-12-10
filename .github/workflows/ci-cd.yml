@@ -16,16 +16,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
+    # Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # Set up Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
+
+    # Install dependencies
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install pytest
+        pip install pytest boto3
+
+    # Start the Flask application
+    - name: Start Flask application
+      run: |
+        python app.py &
+        sleep 5  # Allow the app to initialize
+
+    # Run tests
     - name: Run tests
-      run: pytest
+      run: pytest tests
 
   build-and-deploy:
     needs: test
