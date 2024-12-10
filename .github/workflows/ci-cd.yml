@@ -74,20 +74,40 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-    
+
+    - name: Set up SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2.pem
+        chmod 600 ~/.ssh/ec2.pem
+        
     - name: Deploy to EC2
-      run: |        
-        aws ec2 send-command \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --region ${{ env.AWS_REGION }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters '{
-            "commands": [
-              "docker system prune -a -f",
-              "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
-              "docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
-              "CONTAINER_ID=$(docker ps -q --filter ancestor=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest || true)",
-              "if [ ! -z \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID && docker rm $CONTAINER_ID; fi",
-              "docker run -d --restart unless-stopped -p 80:5000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
-            ]
-          }'
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2.pem ${{ env.EC2_USER }}@${{ env.EC2_PUBLIC_IP }} << 'EOF'
+          # Prune unused images
+          docker system prune -a -f
+          
+          # Login to ECR
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          
+          # Pull the latest image
+          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Stop and remove existing container
+          CONTAINER_ID=$(docker ps -q --filter ancestor=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest || true)
+          if [ ! -z "$CONTAINER_ID" ]; then
+            docker stop $CONTAINER_ID
+            docker rm $CONTAINER_ID
+          fi
+          
+          # Start new container
+          docker run -d \
+            --restart unless-stopped \
+            -p 80:5000 \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Verify deployment
+          docker ps
+        EOF
