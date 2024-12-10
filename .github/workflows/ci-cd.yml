@@ -76,8 +76,7 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
     
     - name: Deploy to EC2
-      run: |
-        # Get the current container ID if it exists
+      run: |        
         aws ec2 send-command \
           --instance-ids ${{ env.EC2_INSTANCE_ID }} \
           --region ${{ env.AWS_REGION }} \
